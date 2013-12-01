@@ -36,7 +36,9 @@ static void print_help(const char *progname) {
           "                                  MUST precede the --pid-file option on the\n"
           "                                  command line for this to work.\n"
           " --debug                        - Enable debug output.\n"
+#if 0
           " --auth-uri=<uri-template>      - URI of the OAuth2 endpoint. Required for webfinger.\n"
+#endif
           " --experimental                 - Enable experimental features\n"
           " --ssl                          - Enable SSL.\n"
           " --cert-path=<path>             - Set path to SSL certificate file.\n"
@@ -93,7 +95,9 @@ static struct option long_options[] = {
   { "detach", no_argument, 0, 'd' },
   { "help", no_argument, 0, 'h' },
   { "version", no_argument, 0, 'v' },
+#if 0
   { "auth-uri", required_argument, 0, 0 },
+#endif
   { "experimental", no_argument, 0, 0 },
   { "ssl", no_argument, 0, 0 },
   { "cert-path", required_argument, 0, 0 },
@@ -182,9 +186,11 @@ void init_config(int argc, char **argv) {
           rs_home_serve_root[--len] = 0;
         }
         rs_home_serve_root_len = len;
+#if 0
       } else if(strcmp(arg_name, "auth-uri") == 0) { // --auth-uri=<uri-template>
         rs_auth_uri = optarg;
         rs_auth_uri_len = strlen(rs_auth_uri);
+#endif
       } else if(strcmp(arg_name, "experimental") == 0) { // --experimental
         rs_experimental = 1;
       } else if(strcmp(arg_name, "ssl") == 0) { // --ssl
@@ -237,10 +243,12 @@ void init_config(int argc, char **argv) {
     log_info("Running in strict mode");
   }
 
+#if 0
   if(rs_auth_uri == NULL) {
     log_warn("No --auth-uri set, won't be able to do webfinger!");
     rs_webfinger_enabled = 0;
   }
+#endif
 
 }
 

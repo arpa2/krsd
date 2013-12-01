@@ -140,11 +140,11 @@ int main(int argc, char **argv) {
 
   /** SETUP LISTENER **/
 
-  struct sockaddr_in sin;
-  memset(&sin, 0, sizeof(struct sockaddr_in));
-  sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = htonl(0);
-  sin.sin_port = htons(RS_PORT);
+  struct sockaddr_in6 sin;
+  memset(&sin, 0, sizeof(struct sockaddr_in6));
+  sin.sin6_family = AF_INET6;
+  //ALREADY_DONE// sin.sin6_addr.s_addr = htonl(0);
+  sin.sin6_port = htons(RS_PORT);
 
   evhtp_t *server = evhtp_new(rs_event_base, NULL);
 

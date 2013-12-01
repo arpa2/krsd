@@ -68,6 +68,7 @@ struct json *new_json(json_write_f writer, void *arg) {
 }
 
 void free_json(struct json *json) {
+  json->write("\n", 1, json->arg);
   free(json);
 }
 

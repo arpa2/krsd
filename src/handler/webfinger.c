@@ -38,7 +38,11 @@ static size_t json_writer(char *buf, size_t count, void *arg) {
   return evbuffer_add((struct evbuffer*)arg, buf, count);
 }
 
+#if 0
 static int process_resource(const char *resource, char **storage_uri, char **auth_uri) {
+#else
+static int process_resource(const char *resource, char **storage_uri) {
+#endif
 
   size_t resource_len = strlen(resource);
   char *resource_buf = malloc(resource_len + 1);
@@ -79,8 +83,10 @@ static int process_resource(const char *resource, char **storage_uri, char **aut
         if(UID_ALLOWED(uid)) {
           *storage_uri = malloc(storage_uri_format_len + strlen(local_part) + 1);
           sprintf(*storage_uri, storage_uri_format, local_part);
+#if 0
           *auth_uri = malloc(RS_AUTH_URI_LEN + strlen(local_part) + 1);
           sprintf(*auth_uri, RS_AUTH_URI, local_part);
+#endif
 
           free(resource_buf);
           return 0; // success!
@@ -109,8 +115,16 @@ void handle_webfinger(evhtp_request_t *req, void *arg) {
 
     const char *resource;
     if(req->uri->query && (resource = evhtp_kv_find(req->uri->query, "resource"))) {
+#if 0
       char *storage_uri = NULL, *auth_uri = NULL;
+#else
+      char *storage_uri = NULL;
+#endif
+#if 0
       if(process_resource(resource, &storage_uri, &auth_uri) != 0) {
+#else
+      if(process_resource(resource, &storage_uri) != 0) {
+#endif
         req->status = EVHTP_RES_NOTFOUND;
       } else {
         json_write_key_val(json, "subject", resource);
@@ -123,12 +137,14 @@ void handle_webfinger(evhtp_request_t *req, void *arg) {
         free(storage_uri);
         json_write_key(json, "properties");
         json_start_object(json);
+#if 0
         json_write_key_val(json, RS_AUTH_METHOD, auth_uri);
         // (begin legacy support [<= remotestorage-00])
         json_write_key_val(json, "auth-method", RS_AUTH_METHOD);
         json_write_key_val(json, "auth-endpoint", auth_uri);
         // (end legacy support)
         free(auth_uri);
+#endif
         json_end_object(json);  // properties
         json_end_object(json); // link rel=remotestorage]
         json_end_array(json); // links

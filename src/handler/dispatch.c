@@ -53,7 +53,7 @@ void dispatch_storage(evhtp_request_t *req, void *arg) {
         log_debug("Request authorized.");
       } else if(auth_result == -1) {
         log_info("Request NOT authorized.");
-        req->status = EVHTP_RES_UNAUTH;
+        //OK/Negotiate// req->status = EVHTP_RES_UNAUTH;
       } else if(auth_result == -2) {
         log_error("An error occured while authorizing request.");    
         req->status = EVHTP_RES_SERVERR; 

@@ -1,5 +1,5 @@
 CFLAGS=${shell pkg-config libevent_openssl --cflags} -ggdb -Wall --std=c99 $(INCLUDES)
-LDFLAGS=${shell pkg-config libevent_openssl --libs} ${shell pkg-config libssl --libs} -lmagic -lattr -lpthread -ldb
+LDFLAGS=${shell pkg-config libevent_openssl --libs} ${shell pkg-config libssl --libs} -lmagic -lattr -lpthread -ldb -levent_openssl -lgssapi_krb5
 INCLUDES=-Isrc -Ilib/evhtp/ -Ilib/evhtp/htparse -Ilib/evhtp/evthr -Ilib/evhtp/oniguruma/
 
 TOOLS = tools/add-token tools/remove-token tools/list-tokens tools/lookup-token
@@ -20,9 +20,9 @@ TESTS=test/unit/common/auth
 
 default: all
 
-all: rs-serve tools tests
+all: krsd tools tests
 
-rs-serve: $(STATIC_LIBS) $(OBJECTS) $(HEADERS)
+krsd: $(STATIC_LIBS) $(OBJECTS) $(HEADERS)
 	@echo "[LD] $@"
 	@$(CC) -o $@ $(OBJECTS) $(STATIC_LIBS) $(LDFLAGS)
 
@@ -40,7 +40,7 @@ tools/%: src/tools/%.o src/common/auth.o $(HEADERS)
 
 clean:
 	@echo "[CLEAN]"
-	@rm -f rs-serve $(TOOLS) $(TESTS)
+	@rm -f krsd $(TOOLS) $(TESTS)
 	@find src/ -name '*.o' -exec rm '{}' ';'
 	@find -name '*~' -exec rm '{}' ';'
 	@find -name '*.swp' -exec rm '{}' ';'
@@ -51,9 +51,9 @@ notes:
 .PHONY: notes
 
 install: all
-# install rs-esrve
-	@echo "[INSTALL] rs-serve"
-	@install -s rs-serve /usr/bin
+# install krsd
+	@echo "[INSTALL] krsd
+	@install -s krsd /usr/bin
 # install tools
 	@echo "[INSTALL] rs-list-tokens"
 	@install -s tools/list-tokens /usr/bin/rs-list-tokens
@@ -64,23 +64,25 @@ install: all
 	@echo "[INSTALL] rs-remove-token"
 	@install -s tools/remove-token /usr/bin/rs-remove-token
 # create working dir
-	@echo "[MKDIR] /var/lib/rs-serve/"
-	@mkdir -p /var/lib/rs-serve
+	@echo "[MKDIR] /var/lib/krs/"
+	@mkdir -p /var/lib/krs
 # create 'authorizations' dir (root of the BDB environment used to store authorization tokens)
-	@echo "[MKDIR] /var/lib/rs-serve/authorizations/"
-	@mkdir /var/lib/rs-serve/authorizations
+	# @echo "[MKDIR] /var/lib/krs/authorizations/"
+	# @mkdir /var/lib/krs/authorizations
+	@echo "[MKDIR] var/authorizations/"
+	@mkdir var/authorizations
 # install init script
-	@echo "[INSTALL] /etc/init.d/rs-serve"
-	@install -m 0755 init-script.sh /etc/init.d/rs-serve
-ifeq (${shell test -f /etc/default/rs-serve >/dev/null 2>&1 ; echo $$?}, 0)
-	@echo "[EXISTS] /etc/default/rs-serve"
+	@echo "[INSTALL] /etc/init.d/krsd
+	@install -m 0755 init-script.sh /etc/init.d/krsd
+ifeq (${shell test -f /etc/default/krsd >/dev/null 2>&1 ; echo $$?}, 0)
+	@echo "[EXISTS] /etc/default/krsd
 else
-	@echo "[INSTALL] /etc/default/rs-serve"
-	@install init-script-defaults /etc/default/rs-serve
+	@echo "[INSTALL] /etc/default/krsd
+	@install init-script-defaults /etc/default/krsd
 endif
 ifeq (${shell type update-rc.d >/dev/null 2>&1 ; echo $$?}, 0)
 	@echo "[UPDATE-RC.D]"
-	@update-rc.d rs-serve defaults
+	@update-rc.d krsd defaults
 else
 	@echo "(can't update /etc/rcN.d, no idea how that works on your system)"
 endif

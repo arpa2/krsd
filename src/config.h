@@ -46,10 +46,12 @@ extern char *rs_hostname;
 #define RS_HOSTNAME rs_hostname
 #define RS_STORAGE_API "draft-dejong-remotestorage-01"
 #define RS_AUTH_METHOD "http://tools.ietf.org/html/rfc6749#section-4.2"
+#if 0
 extern char *rs_auth_uri;
 #define RS_AUTH_URI rs_auth_uri
 extern int rs_auth_uri_len;
 #define RS_AUTH_URI_LEN rs_auth_uri_len
+#endif
 extern int rs_webfinger_enabled;
 #define RS_WEBFINGER_ENABLED rs_webfinger_enabled
 
