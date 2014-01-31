@@ -21,29 +21,29 @@
  *
  */
 
-static char *make_disk_path(char *user, char *path, char **storage_root);
+static char *make_disk_path(char *dom_user, char *path, gss_buffer_t authuser, char **storage_root);
 static evhtp_res serve_directory(evhtp_request_t *request, char *disk_path,
                                  struct stat *stat_buf);
 static evhtp_res serve_file_head(evhtp_request_t *request_t, char *disk_path,
                            struct stat *stat_buf,const char *mime_type);
 static evhtp_res serve_file(evhtp_request_t *request, const char *disk_path,
                       struct stat *stat_buf);
-static evhtp_res handle_get_or_head(evhtp_request_t *request, int include_body);
+static evhtp_res handle_get_or_head(evhtp_request_t *request, gss_buffer_t authuser, int include_body);
 
-evhtp_res storage_handle_head(evhtp_request_t *request) {
+evhtp_res storage_handle_head(evhtp_request_t *request, gss_buffer_t authuser) {
   if(RS_EXPERIMENTAL) {
-    return handle_get_or_head(request, 0);
+    return handle_get_or_head(request, authuser, 0);
   } else {
     return EVHTP_RES_METHNALLOWED;
   }
 }
 
-evhtp_res storage_handle_get(evhtp_request_t *request) {
+evhtp_res storage_handle_get(evhtp_request_t *request, gss_buffer_t authuser) {
   log_debug("storage_handle_get()");
-  return handle_get_or_head(request, 1);
+  return handle_get_or_head(request, authuser, 1);
 }
 
-evhtp_res storage_handle_put(evhtp_request_t *request) {
+evhtp_res storage_handle_put(evhtp_request_t *request, gss_buffer_t authuser) {
   log_debug("HANDLE PUT");
 
   if(request->uri->path->file == NULL) {
@@ -54,6 +54,7 @@ evhtp_res storage_handle_put(evhtp_request_t *request) {
   char *storage_root = NULL;
   char *disk_path = make_disk_path(REQUEST_GET_USER(request),
                                    REQUEST_GET_PATH(request),
+				   authuser,
                                    &storage_root);
   if(disk_path == NULL) {
     return EVHTP_RES_SERVERR;
@@ -87,6 +88,7 @@ evhtp_res storage_handle_put(evhtp_request_t *request) {
 
   } while(0);
 
+#if 0
   // look up uid and gid of current user, so we can chown() correctly.
   uid_t uid;
   gid_t gid;
@@ -102,6 +104,7 @@ evhtp_res storage_handle_put(evhtp_request_t *request) {
       return EVHTP_RES_SERVERR;
     }
   } while(0);
+#endif
 
   // create parent directories
   do {
@@ -154,9 +157,11 @@ evhtp_res storage_handle_put(evhtp_request_t *request) {
           return EVHTP_RES_SERVERR;
         }
 
+#if 0
         if(fchownat(dirfd, dir_name, uid, gid, AT_SYMLINK_NOFOLLOW) != 0) {
           log_warn("failed to chown() newly created directory: %s", strerror(errno));
         }
+#endif
       }
       prevfd = dirfd;
       dirfd = openat(prevfd, dir_name, O_RDONLY);
@@ -188,9 +193,11 @@ evhtp_res storage_handle_put(evhtp_request_t *request) {
   }
 
   if(! exists) {
+#if 0
     if(fchown(fd, uid, gid) != 0) {
       log_warn("Failed to chown() newly created file: %s", strerror(errno));
     }
+#endif
   }
 
   // write buffered data
@@ -230,7 +237,7 @@ evhtp_res storage_handle_put(evhtp_request_t *request) {
   return exists ? EVHTP_RES_OK : EVHTP_RES_CREATED;
 }
 
-evhtp_res storage_handle_delete(evhtp_request_t *request) {
+evhtp_res storage_handle_delete(evhtp_request_t *request, gss_buffer_t authuser) {
 
   if(request->uri->path->file == NULL) {
     // DELETE to directories aren't allowed
@@ -240,6 +247,7 @@ evhtp_res storage_handle_delete(evhtp_request_t *request) {
   char *storage_root = NULL;
   char *disk_path = make_disk_path(REQUEST_GET_USER(request),
                                    REQUEST_GET_PATH(request),
+				   authuser,
                                    &storage_root);
   if(disk_path == NULL) {
     return EVHTP_RES_SERVERR;
@@ -485,28 +493,66 @@ static evhtp_res serve_file(evhtp_request_t *request, const char *disk_path, str
   return EVHTP_RES_OK;
 }
 
-static char *make_disk_path(char *user, char *path, char **storage_root) {
+static char *make_disk_path(char *dom_user, char *path, gss_buffer_t authuser, char **storage_root) {
 
   // FIXME: use passwd->pwdir instead of /home/{user}/
 
   // calculate maximum length of path
-  int pathlen = ( strlen(user) + strlen(path) +
+  int pathlen = ( strlen(dom_user) + strlen(path) +
                   6 + // "/home/"
                   1 + // another slash
                   RS_HOME_SERVE_ROOT_LEN );
   char *disk_path = malloc(pathlen + 1);
+  char *xsfile = NULL;
+  FILE *xsf;
+  char principal [1026];
+  bool authorized;
   if(disk_path == NULL) {
     log_error("malloc() failed: %s", strerror(errno));
     return NULL;
   }
-  if(storage_root) {
-    *storage_root = malloc( 7 + RS_HOME_SERVE_ROOT_LEN + strlen(user) + 1);
-    if(*storage_root == NULL) {
-      log_error("malloc() failed: %s", strerror(errno));
-      free(disk_path);
-      return NULL;
+  log_debug("Constructing disk_path for dom_user = \"%s\"", dom_user);
+  xsfile = malloc( 7 + RS_HOME_SERVE_ROOT_LEN + strlen(dom_user) + 1 + 17);
+  if(xsfile == NULL) {
+    log_error("malloc() failed: %s", strerror(errno));
+    free(disk_path);
+    return NULL;
+  }
+  sprintf(xsfile, "/home/%s/%s/.k5remotestorage", dom_user, RS_HOME_SERVE_ROOT);
+  log_debug("Access control list = \"%s\"", xsfile);
+  xsf = fopen (xsfile, "r");
+  authorized = false;
+  if (xsf) {
+    while ((!authorized) && fgets (principal, sizeof (principal)-1, xsf)) {
+      int len = strlen (principal);
+      if ((len > 1) && (principal [len-1] == '\n')) {
+        principal [--len] = '\0';
+      }
+      log_debug("Considering acceptable principal \"%s\"", principal);
+      authorized = (len == authuser->length) && (0 == memcmp (principal, authuser->value, len));
     }
-    sprintf(*storage_root, "/home/%s/%s", user, RS_HOME_SERVE_ROOT);
+    fclose (xsf);
+  } else {
+    log_error ("Failed to open access control list");
+    free(xsfile);
+    free(disk_path);
+    return NULL;
+  }
+  if (!authorized) {
+    log_error ("Access control list does not contain authorized user");
+    free(xsfile);
+    free(disk_path);
+    return NULL;
+  }
+  log_debug ("xsfile = \"%s\"", xsfile);
+  if(storage_root) {
+    // Cut off .k5remotestorage and reuse for *storage_root
+    xsfile [7 + RS_HOME_SERVE_ROOT_LEN + strlen (dom_user)] = '\0';
+    *storage_root = xsfile;
+    log_debug ("storage_root = \"%s\"", storage_root);
+  } else {
+    free (xsfile);
+    xsfile = NULL;
   }
   // remove all /.. segments
   // (we don't try to resolve them, but instead treat them as garbage)
@@ -523,16 +569,18 @@ static char *make_disk_path(char *user, char *path, char **storage_root) {
     pos[restlen] = 0;
   }
   // build path
-  sprintf(disk_path, "/home/%s/%s%s", user, RS_HOME_SERVE_ROOT, path);
+  sprintf(disk_path, "/home/%s/%s%s", dom_user, RS_HOME_SERVE_ROOT, path);
+  log_debug ("disk_path = \"%s\"", disk_path);
   return disk_path;
 }
 
-static evhtp_res handle_get_or_head(evhtp_request_t *request, int include_body) {
+static evhtp_res handle_get_or_head(evhtp_request_t *request, gss_buffer_t authuser, int include_body) {
 
   log_debug("HANDLE GET / HEAD (body: %s)", include_body ? "true" : "false");
 
   char *disk_path = make_disk_path(REQUEST_GET_USER(request),
                                    REQUEST_GET_PATH(request),
+				   authuser,
                                    NULL);
   if(disk_path == NULL) {
     return EVHTP_RES_SERVERR;

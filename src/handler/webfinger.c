@@ -29,9 +29,9 @@ void init_webfinger() {
   }
   sprintf(lrdd_template, "%s://%s/.well-known/webfinger?resource={uri}",
           RS_SCHEME, RS_HOSTNAME);
-  storage_uri_format_len = strlen(RS_SCHEME) + strlen(RS_HOSTNAME) + 12;
+  storage_uri_format_len = strlen(RS_SCHEME) + strlen(RS_HOSTNAME) + 13;
   storage_uri_format = malloc(storage_uri_format_len + 2 + 1);
-  sprintf(storage_uri_format, "%s://%s/storage/%%s", RS_SCHEME, RS_HOSTNAME);
+  sprintf(storage_uri_format, "%s://%s/storage/%%s/%%s", RS_SCHEME, RS_HOSTNAME);
 }
 
 static size_t json_writer(char *buf, size_t count, void *arg) {
@@ -76,13 +76,15 @@ static int process_resource(const char *resource, char **storage_uri) {
       log_debug("hostname: %s", hostname);
       // check hostname
       if(strcmp(hostname, RS_HOSTNAME) == 0) {
+#if 0
         uid_t uid = user_get_uid(local_part);
         log_debug("got uid: %d (RS_MIN_UID: %d, allowed: %d)", uid,
                   RS_MIN_UID, UID_ALLOWED(uid));
         // check if user is valid
         if(UID_ALLOWED(uid)) {
-          *storage_uri = malloc(storage_uri_format_len + strlen(local_part) + 1);
-          sprintf(*storage_uri, storage_uri_format, local_part);
+#endif
+          *storage_uri = malloc(storage_uri_format_len + strlen(hostname) + strlen(local_part) + 1);
+          sprintf(*storage_uri, storage_uri_format, hostname, local_part);
 #if 0
           *auth_uri = malloc(RS_AUTH_URI_LEN + strlen(local_part) + 1);
           sprintf(*auth_uri, RS_AUTH_URI, local_part);
@@ -90,7 +92,9 @@ static int process_resource(const char *resource, char **storage_uri) {
 
           free(resource_buf);
           return 0; // success!
+#if 0
         }
+#endif
       }
     }
 

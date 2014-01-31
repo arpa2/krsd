@@ -13,7 +13,7 @@
 #ifndef RS_AUTH_H
 #define RS_AUTH_H
 
-int authorize_request(evhtp_request_t *req);
+int authorize_request(evhtp_request_t *req, gss_buffer_desc *user);
 
 #endif /* !RS_AUTH_H */
 

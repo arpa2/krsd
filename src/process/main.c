@@ -95,6 +95,76 @@ static void handle_storage(evhtp_request_t *req, void *arg) {
   dispatch_storage(req, arg);
 }
 
+static void handle_static(evhtp_request_t *req, void *arg) {
+  log_info("static URI path \"%s\"", req->uri->path->full);
+  if (req->method != htp_method_GET) {
+    req->status = EVHTP_RES_METHNALLOWED;
+  } else if ((req->uri->path->full [0] != '/') || strstr (req->uri->path->full, "/..")) {
+    req->status = EVHTP_RES_SERVERR;
+  } else {
+    char *path = malloc (RS_STATIC_DIR_LEN + strlen (req->uri->path->full) + 10 + 1);
+    if (!path) {
+      log_error("malloc() failed");
+      req->status = EVHTP_RES_SERVERR;
+    } else {
+      int fh;
+      char *mime_type = NULL;
+      int free_mime_type = 0;
+
+      sprintf (path, "%s%s", RS_STATIC_DIR, req->uri->path->full);
+      if (path [strlen (path) - 1] == '/') {
+	strcat (path, "index.html");
+      }
+      log_debug("static filename \"%s\"", path);
+    
+      // mime type is either passed in ... (such as for directory listings)
+      if(mime_type == NULL) {
+        // ... or detected based on xattr
+        mime_type = content_type_from_xattr(path);
+        if(mime_type == NULL) {
+#if 0
+          // ... or guessed by libmagic
+          log_debug("mime type not given, detecting...");
+          mime_type = magic_file(magic_cookie, path);
+#endif
+          if(mime_type == NULL) {
+            // ... or defaulted to "application/octet-stream"
+            log_error("magic failed: %s", magic_error(magic_cookie));
+            mime_type = "application/octet-stream; charset=binary";
+          }
+        } else {
+          // xattr detected mime type and allocated memory for it
+          free_mime_type = 1;
+        }
+      }
+    
+      if (mime_type) {
+        log_info("setting Content-Type of %s: %s", req->uri->path->full, mime_type);
+        ADD_RESP_HEADER_CP(req, "Content-Type", mime_type);
+      }
+    
+      if(free_mime_type) {
+        free((char*)mime_type);
+      }
+
+      fh = open (path, O_RDONLY);
+      free(path);
+      if (fh < 0) {
+        req->status = EVHTP_RES_NOTFOUND;
+      } else {
+	char buf [1024];
+	size_t rdlen;
+	while ((rdlen = read (fh, buf, 1024)) > 0) {
+	  evbuffer_add (req->buffer_out, buf, rdlen);
+	}
+        close (fh);
+        req->status = EVHTP_RES_OK;
+      }
+    }
+  }
+  evhtp_send_reply(req, req->status);
+}
+
 static int dummy_ssl_verify_callback(int ok, X509_STORE_CTX * x509_store) {
   return 1;
 }
@@ -188,9 +258,13 @@ int main(int argc, char **argv) {
 
   /* REMOTESTORAGE */
 
-  evhtp_callback_t *storage_cb = evhtp_set_regex_cb(server, "^/storage/([^/]+)/.*$", handle_storage, NULL);
+  evhtp_callback_t *storage_cb = evhtp_set_regex_cb(server, "^/storage/([^/]+/[^/]+)/.*$", handle_storage, NULL);
 
   evhtp_set_hook(&storage_cb->hooks, evhtp_hook_on_request_fini, finish_request, NULL);
+
+  /* STATIC CONTENT */
+
+  evhtp_set_gencb(server, handle_static, NULL);
 
   if(evhtp_bind_sockaddr(server, (struct sockaddr*)&sin, sizeof(sin), 1024) != 0) {
     log_error("evhtp_bind_sockaddr() failed: %s", strerror(errno));

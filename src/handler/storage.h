@@ -13,9 +13,9 @@
 #ifndef RS_HANDLER_STORAGE_H
 #define RS_HANDLER_STORAGE_H
 
-evhtp_res storage_handle_head(evhtp_request_t *request);
-evhtp_res storage_handle_get(evhtp_request_t *request);
-evhtp_res storage_handle_put(evhtp_request_t *request);
-evhtp_res storage_handle_delete(evhtp_request_t *request);
+evhtp_res storage_handle_head(evhtp_request_t *request, gss_buffer_t username);
+evhtp_res storage_handle_get(evhtp_request_t *request, gss_buffer_t username);
+evhtp_res storage_handle_put(evhtp_request_t *request, gss_buffer_t username);
+evhtp_res storage_handle_delete(evhtp_request_t *request, gss_buffer_t username);
 
 #endif /* !RS_HANDLER_STORAGE_H */

@@ -72,14 +72,14 @@ be able to run on another system, please open an issue to ask for help)
 2.1) remotestorage
 ------------------
 
-The currently implemented protocol version is "draft-dejong-remotestorage-01".
+The currently implemented protocol version is "draft-dejong-remotestorage-01".  It has been modified to permit implied, that is HTTP-level, authentication and authorisation.  Demo code is available in a separate directory.
 
 Currently the following features are supported:
-* CORS support for all verbs
+* CORS support for all verbs (TODO: May not work at present)
 * GET, PUT, DELETE requests on files and folders
 * Opaque version strings (in directory listings and "ETag" header)
 * Conditional GET, PUT and DELETE requests ("If-Match", "If-None-Match" headers)
-* Protection of all non-public paths via Bearer token authorization.
+* Protection of all non-public paths via authentication by the browser at the HTTP level, and authorisation based on a .k5remotestorage file in the destination file system
 * Special handling of public paths (i.e. those starting with /public/), such that
   requests on non-directory paths succeed without authorization.
 * HEAD requests on files and folders with "Content-Length" header
@@ -95,6 +95,12 @@ the rs-serve instance. This currently defaults to "local.dev" and can be
 overridden with the --hostname option.
 Virtual hosting (== hosting storage for multiple domains from a single
 instance) is currently not supported.
+
+The pathname returned ermits for the krsd to parse out two components of
+the pathname to which it stores: /storage/domain.tld/user/ should be at
+the beginning of the URI if it is to be accepted as a remoteStorage URI
+on krsd.  Anything after this is taken as a path into the storage
+structures used.
 
 2.3) authorization
 ------------------
@@ -182,9 +188,9 @@ to these steps:
 	http/chitchat.arpa2.net will append http/chitchat.arpa2.net/ to
 	the path found so far.
 
-  3. Thirdly, a fixed directory name such as webstorage/ is appended to
+  3. Thirdly, a fixed directory name such as remotestorage/ is appended to
      the path name.  This is done to separate remote storage from local
-     storage and from other remote storeage components, and to make all the
+     storage and from other remote storage components, and to make all the
      other directories unavailable.  This is of no use to local storage, but
      it is immensely useful when dealing with storage on an OpenAFS share
      that is also employed for other purposes.
@@ -195,21 +201,28 @@ be helpful at this point.
 Example.  The user john@ARPA2.NET could be found in DNS zone arpa2.net, and
 dependent on local settings his files could end up in mounted locations like:
 
-  /afs/arpa2.net/john/webstorage/...
-  /var/lib/krs/arpa2.net/john/webstorage/...
+  /afs/arpa2.net/john/remotestorage/...
+  /var/lib/krs/arpa2.net/john/remotestorage/...
 
 Example.  After changing user-ID to john/admin under the same realm, the
 files accessible to John are found in places like:
 
-  /afs/arpa2.net/john/admin/webstorage/...
-  /var/lib/krs/arpa2.net/john/admin/webstorage/...
+  /afs/arpa2.net/john/admin/remotestorage/...
+  /var/lib/krs/arpa2.net/john/admin/remotestorage/...
 
 Example.  When a server is not acting on behalf of a user (through S4U with
 Constrained Delegation) but on its own title, it depends on its principal
 name.  For example, xmpp/xmpp.arpa2.net@ARPA2.NET could be found on:
 
-  /afs/arpa2.net/xmpp/xmpp.arpa2.net/webstorage/...
-  /var/lib/krs/arpa2.net/xmpp/xmpp.arpa2.net/webstorage/...
+  /afs/arpa2.net/xmpp/xmpp.arpa2.net/remotestorage/...
+  /var/lib/krs/arpa2.net/xmpp/xmpp.arpa2.net/remotestorage/...
+
+The filesystem path is configured in the webfinger profile, and may or may
+not relate to the Kerberos Principal Name used to access the resource.
+For full flexibility, the remotestorage directory should hold a file named
+.k5remotestorage which must hold the Kerberos Principal Name on a line of
+its own, if it is to have read/write access to anything underneath this
+directory.
 
 The reliance on filesystem paths implies a few noteworthy restrictions:
 
@@ -220,7 +233,7 @@ The reliance on filesystem paths implies a few noteworthy restrictions:
   remotestorage (as far as I know).
 
 * MIME types may not be exact for files that were added "out-of-band", that is
-  not added via the remotestorage protocol, but by copying to the ~/storage/
+  not added via the remotestorage protocol, but by copying to the remotestorage/
   directory by other means. krsd stores MIME type and character encoding
   under the "user.mime_type" and "user.charset" extended attributes, given these
   are supported by the underlying filesystem. When these attributes aren't set,

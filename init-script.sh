@@ -1,5 +1,5 @@
 ### BEGIN INIT INFO
-# Provides:          krs-serve
+# Provides:          krsd
 # Required-Start:    networking
 # Required-Stop:     networking
 # Default-Start:     2 3 4 5
@@ -11,16 +11,16 @@
 # Using the lsb functions to perform the operations.
 . /lib/lsb/init-functions
 # Process name ( For display )
-NAME=krs-serve
+NAME=krsd
 # Daemon name, where is the actual executable
-DAEMON=/usr/bin/krs-serve
+DAEMON=/usr/bin/krsd
 # pid file for the daemon
-PIDFILE=/var/run/krs-serve.pid
+PIDFILE=/var/run/krsd.pid
 
 # If the daemon is not there, then exit.
 test -x $DAEMON || exit 5
 
-. /etc/default/krs-serve
+. /etc/default/krsd
 
 case $1 in
  start)

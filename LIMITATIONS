@@ -1,0 +1,54 @@
+KNOWN LIMITATIONS OF KRSD
+=========================
+
+*Not all things that you might like work as you think...*
+
+
+Limited use of CORS
+-------------------
+
+The CORS approach may not work.  Think of it -- you're a browser and a
+(potentially rogue) program attempts to approach a remote site and serve
+it with your Kerberos ticket.  This may not be what the user is after, as
+it may give rise to a MITM attack.
+
+CORS in general has a fairly rocky basis when it comes to security.  This
+is especially true for the implicit security operations that are provided
+by a browser: Negoatiate for GSSAPI/Kerberos, and X.509 client certificates
+over a TLS connection.
+
+The point is, these implicit security operations are more promising in a
+secure web model than CORS can ever be.  The separation of application
+program dynamicity from solid HTTP handling is very useful in keeping
+rogue programs away from (the use of) credentials.  It could even be
+implemented along the way, in an "authenticating HTTP proxy".
+
+
+Limited utility for POSIX accounts
+----------------------------------
+
+Where rs-serve was designed for local user accounts that were made available
+for web storage, the krsd is instead designed to service infrastructure,
+in a manner that can be hosted en masse by hosting providers.  This should
+make the work accessible to a larger audience.
+
+The use of POSIX accounts works well for a local setup, but less so for the
+infrastructural variety.  For that reason, files are stored under the user
+of the krsd and the user privileges are not modified.
+
+
+Filesystem backing on OpenAFS
+-----------------------------
+
+There is a potential filesystem approach to this, though.  It is feasible
+to use the online filesystem AFS as a backend, and employ Kerberos to
+authorize any changes to it.  If this is done, S2U4Proxy can be used to
+pass on the SPNEGO credential to access the AFS mount.  This would work if
+the KDC has Constrained Delegation configured to permit the krsd HTTP service
+to access the filesystem, or when a krsd credential is permitted in the ACL
+of the AFS partition.
+
+Note how this approach makes the stored data available to the end user, in
+much the same way as with a local storage directory under a POSIX account.
+
+

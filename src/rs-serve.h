@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
@@ -59,6 +61,11 @@
 // libssl headers (for SHA1 computation)
 
 #include <openssl/sha.h>
+
+// kerberos headers
+#include <krb5.h>
+#include <gssapi.h>
+#include <gssapi/gssapi_krb5.h>
 
 // rs-serve headers
 

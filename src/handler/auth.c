@@ -14,13 +14,12 @@
 #include <alloca.h>
 
 #include <sys/signalfd.h>
-#include <gssapi.h>
 
 #include "rs-serve.h"
 
 #define IS_READ(r) (r->method == htp_method_GET || r->method == htp_method_HEAD)
 
-// SPNEGO mechanism is 1.3.6.1.5.5.2 -- tag 0x06, lenght 6, 1.3 packed funny:
+// SPNEGO mechanism is 1.3.6.1.5.5.2 -- tag 0x06, length 6, 1.3 packed funny:
 // uint8_t OID_SPNEGO_bytes [] = { 1*40+3, 6, 1, 5, 5, 2 };
 // const gss_OID_desc OID_SPNEGO = {
 // 	.length = 6,
@@ -76,13 +75,17 @@ int b64_decode (gss_buffer_t out, const char *in) {
 		uint32_t digit = (uint32_t) b64_decode_table [(uint8_t) *in];
 		if (digit <= 63) {
 			block |= digit << shift;
-			shift -= 6;
 			in++;
+		} else if (shift == 3*6) {
+			break;
 		}
+		shift -= 6;
 		if (shift < 0) {
-			((uint8_t *) out->value) [out->length++] = digit >> 16;
-			((uint8_t *) out->value) [out->length++] = digit >>  8;
-			((uint8_t *) out->value) [out->length++] = digit      ;
+			((uint8_t *) out->value) [out->length++] = block >> 16;
+			((uint8_t *) out->value) [out->length++] = block >>  8;
+			((uint8_t *) out->value) [out->length++] = block      ;
+			//DEBUG// log_debug("%02x %02x %02x", (block >> 16) & 0x00ff, (block >> 8) & 0x00ff, block & 0x00ff);
+			block = 0;
 			if (digit <= 63) {
 				shift = 3*6;
 			}
@@ -97,19 +100,63 @@ int b64_decode (gss_buffer_t out, const char *in) {
 	return 0;
 }
 
+static uint8_t b64_encode_table [64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-int authorize_request(evhtp_request_t *req) {
+int b64_encode (char *out, gss_buffer_t in) {
+	int len64 = 0;
+	int pos256 = 0;
+	int totalbits = in->length * 4;
+	uint32_t chunk;
+	while (3 * len64 < totalbits) {
+		int maskpos = len64 & 0x03;
+		if (maskpos == 0) {
+			chunk = (((unsigned char *) in->value) [pos256+0] << 16) |
+				(((unsigned char *) in->value) [pos256+1] <<  8) |
+				 ((unsigned char *) in->value) [pos256+2];
+			pos256 += 3;
+		}
+		*out++ = b64_encode_table [0x3f & (chunk >> (18 - maskpos * 6))];
+		len64++;
+	}
+	switch (in->length % 3) {
+	case 1:
+		// Append "=="
+		out [len64++] = '=';
+		// ...continue into next case...
+	case 2:
+		// Append "="
+		out [len64++] = '=';
+		// ...continue into next case...
+	case 0:
+		// Append no '=' characters
+		break;
+	}
+	out [len64] = '\0';
+	return len64;
+}
+
+
+int authorize_request(evhtp_request_t *req, gss_buffer_t username) {
 #if 0
   char *username = REQUEST_GET_USER(req);
 #endif
   const char *auth_header = evhtp_header_find(req->headers_in, "Authorization");
-  evhtp_header_t *wwwauth;
+  evhtp_header_t *wwwauth = NULL;
   gss_ctx_id_t ctxh = GSS_C_NO_CONTEXT;
+  gss_cred_id_t deleg = GSS_C_NO_CREDENTIAL;
+  OM_uint32 flgs = 0;
   int b64len;
-  gss_buffer_desc gssbuf;
-  gss_buffer_desc gssout;
+  gss_buffer_desc gssbuf = GSS_C_EMPTY_BUFFER;
+  gss_buffer_desc gssout = GSS_C_EMPTY_BUFFER;
+  gss_name_t intname = GSS_C_NO_NAME;
+  gss_OID mech_oid;
   OM_uint32 major, minor;
-  log_debug("Got auth header: %s", auth_header);
+  if(auth_header == NULL) {
+    log_debug("Got no auth header to work on; requesting SPNEGO");
+    ADD_RESP_HEADER(req, "WWW-Authenticate", "Negotiate");
+    return -1;
+  }
+  //DEBUG// log_debug("Got auth header: %s", auth_header);
   const char *token;
   int retval = 0;
   if(auth_header) {
@@ -122,34 +169,61 @@ int authorize_request(evhtp_request_t *req) {
       }
       gssbuf.length = (b64len * 3 + 3) >> 2; /* Perhaps slightly too much */
       gssbuf.value = alloca (gssbuf.length);	/* No NULL return */
-      log_debug("Got SPNEGO token: %s", token);
+      log_debug("Got SPNEGO token of size %d: %s", strlen (token), token);
       if (b64_decode (&gssbuf, token) < 0) {
 	log_error("Rejecting faulty base64 coding in SPNEGO token.");
 	return -2;
       }
+      log_debug("SPNEGO decoded length: %d (should be around %f minus trailing '=' signs)", gssbuf.length, strlen (token) * 6.0 / 8.0);
       //TODO// Sessions are _only_ needed for additional client authentication
       //TODO// So skip: Was a usable GSSAPI context already created?
-      major = gss_accept_sec_context (&minor, &ctxh, GSS_C_NO_CREDENTIAL, &gssbuf, GSS_C_NO_CHANNEL_BINDINGS, NULL, NULL /**NONEED:OUTPUT** OID_SPNEGO */, &gssout, NULL /**TODO** &GSS_C_REPLAY_FLAG */, NULL, NULL /**TODO** or lure credential into this varptr with &GSS_C_DELEG_FLAG? */);
-      //TODO// Supply token to session's GSSAPI accept environment
+      major = gss_accept_sec_context (
+			&minor,
+			&ctxh,
+			GSS_C_NO_CREDENTIAL,	//MODKRB: server_creds (with that value)
+			&gssbuf,
+			GSS_C_NO_CHANNEL_BINDINGS,
+			&intname,
+			&mech_oid,
+			&gssout,
+			&flgs,
+			NULL,
+			&deleg);
       if (major != GSS_S_COMPLETE) {
         if (major == GSS_S_CONTINUE_NEEDED) {
 	  log_error("GSSAPI requires continued negotiation, which is not supported.");
 	  retval = -2;
         } else {
-	  log_error("GSSAPI returns error code %d and minor %d.", major, minor);
+	  log_error("GSSAPI initiation of security context returns error code %d and minor %d.", major, minor);
 	  retval = -1;
         }
       }
-      if (gssout.length > 0) {
+      if ((major == GSS_S_CONTINUE_NEEDED) && (gssout.length > 0)) {
 	if (retval == 0) {
-          //TODO// The construct WWW-Authenticate header for the 200 reply
-	  log_debug("GSSAPI wants to send data back, which is not supported yet.");
+	  // We know that major == GSS_S_COMPLETE (otherwise retval < 0)
+	  char *hdrval = malloc (11 + gssout.length * 4 / 3 + 3 + 1);
+	  if(hdrval) {
+	    memcpy (hdrval,      "Negotiate ", 10);
+	    b64_encode (hdrval + 10, &gssout);
+	    evhtp_headers_add_header(req->headers_out,
+			evhtp_header_new ("WWW-Authenticate", hdrval, 0, 1));
+	    free (hdrval);
+	  }
+	  gss_release_buffer (NULL, &gssout);
 	}
-	gss_release_buffer (NULL, &gssout);
 	/* Keep retval == 0 --> the client may fail, but we are satisfied */
       }
       if (ctxh != GSS_C_NO_CONTEXT) {
 	gss_delete_sec_context (NULL, &ctxh, GSS_C_NO_BUFFER);
+      }
+      /* Pickup opaque intname handle, map it to a gss_buffer_t string */
+      if ((major == GSS_S_COMPLETE) && (retval == 0)) {
+	major = gss_display_name (&minor, intname, username, NULL);
+	if (major != GSS_S_COMPLETE) {
+	  log_error("GSSAPI display name returns error code %d and minor %d.", major, minor);
+	  return -2;
+	}
+	log_debug("GSSAPI accepted credential named %.*s.", username->length, username->value);
       }
       //TODO// Accepted and no sessions?  Then report success right now
       if (major == GSS_S_COMPLETE) {

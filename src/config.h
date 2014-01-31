@@ -86,6 +86,11 @@ extern char *rs_home_serve_root;
 extern int rs_home_serve_root_len;
 #define RS_HOME_SERVE_ROOT_LEN rs_home_serve_root_len
 
+extern char *rs_static_dir;
+#define RS_STATIC_DIR rs_static_dir
+extern int rs_static_dir_len;
+#define RS_STATIC_DIR_LEN rs_static_dir_len
+
 extern struct rs_header rs_default_headers;
 #define RS_DEFAULT_HEADERS rs_default_headers
 

@@ -28,7 +28,9 @@ static void print_help(const char *progname) {
           "                                  future output will be lost.\n"
           "  --dir=<directory-name>        - Name of the directory relative to the user's\n"
           "                                  home directory to serve data from.\n"
-          "                                  Defaults to: storage\n"
+          "                                  Defaults to: remotestorage\n"
+          "  --static=<directory>          - Directory from which to serve static files.\n"
+	  "                                  Defaults to: /var/www/krsd\n"
           "  --pid-file=<file>             - Write PID to given file.\n"
           "  --stop                        - Stop a running rs-serve process. The process\n"
           "                                  is identified by the PID file specified via\n"
@@ -71,6 +73,8 @@ FILE *rs_pid_file = NULL;
 char *rs_pid_file_path = NULL;
 char *rs_home_serve_root = NULL;
 int rs_home_serve_root_len = 0;
+char *rs_static_dir = NULL;
+int rs_static_dir_len = 0;
 int rs_stop_other = 0;
 char *rs_auth_uri = NULL;
 int rs_auth_uri_len = 0;
@@ -95,6 +99,7 @@ static struct option long_options[] = {
   { "detach", no_argument, 0, 'd' },
   { "help", no_argument, 0, 'h' },
   { "version", no_argument, 0, 'v' },
+  { "static", required_argument, 0, 0 },
 #if 0
   { "auth-uri", required_argument, 0, 0 },
 #endif
@@ -186,6 +191,14 @@ void init_config(int argc, char **argv) {
           rs_home_serve_root[--len] = 0;
         }
         rs_home_serve_root_len = len;
+      } else if(strcmp(arg_name, "static") == 0) { // --static=<dirname>
+        rs_static_dir = optarg;
+        int len = strlen(rs_static_dir);
+        if(rs_static_dir[len - 1] == '/') {
+          // strip trailing slash.
+          rs_static_dir[--len] = 0;
+        }
+        rs_static_dir = len;
 #if 0
       } else if(strcmp(arg_name, "auth-uri") == 0) { // --auth-uri=<uri-template>
         rs_auth_uri = optarg;
@@ -209,8 +222,13 @@ void init_config(int argc, char **argv) {
   }
 
   if(rs_home_serve_root == NULL) {
-    rs_home_serve_root = "storage";
-    rs_home_serve_root_len = 7;
+    rs_home_serve_root = "remotestorage";
+    rs_home_serve_root_len = 13;
+  }
+
+  if(rs_static_dir == NULL) {
+    rs_static_dir = "/var/www/krsd";
+    rs_static_dir_len = 13;
   }
 
   if(rs_stop_other) {

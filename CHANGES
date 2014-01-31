@@ -1,0 +1,42 @@
+# Changes of krsd relative to rs-serve
+
+The reason to create krsd from rs-serve was to demonstrate a different mode of using remoteStorage.  Instead of making all authentication and authorisation code explicitly a part of JavaScript code, this deamon presents one way of having this arranged by the browser, outside of the potentially dangerous grip of web code.
+
+Two mechanisms are generally available in browsers to do such things:
+
+ * X.509 client-side certificates
+ * Kerberos
+
+Both can behave as a single sign-on system, thus leading to a high level of end user satisfaction.  The version implemented by krsd is based on Kerberos.
+
+
+## Virtual Hosting
+
+The design of rs-serve is based on local user accounts.  This makes it highly suitable for a NAS or local desktop or server system, which is ultimately what remoteStorage is after.  But to get less technical users going I would also love to see such a component provided by domain hosting providers.  So I’ve built in virtual hosting facilities.
+
+Currently, I parse /domain/user/ instead of /user/ from the URI, and put that into the disk_path, but I’m not sure this is the best scheme ever.  It might take the hostname into account instead (hardly a briliiant idea…) or perhaps the SNI-offered hostname.  This is likely to change.
+
+
+## User Accounts
+
+I removed all code relating to local user accounts, simply because that would not match with virtual hosting.  This also means that all data is stored with the uid of krsd, which is a pitty.  I do see a way out of this with an OpenAFS backend, but that is a future scenario.
+
+
+## Kerberos
+
+This is the point I am trying to prove — remoteStorage can use HTTP-level authentication, such as X.509 client certificates or, as I’ve implemented into krsd, Kerberos tickets passed over SPNEGO (the WWW-Authenticate method is called Negotiate and exchanges GSSAPI packets) and so there is no need for authentication / authorisation code in JavaScript — which is an insecure place to have it anyway.  I modified remoteStorage accordingly, and will offer patches to that end.
+
+The authorisation has also moved.  It does not take place before parsing the headers (which may leak information on locally available UIDs if you’re not careful) but it done afterwards.  When paths are constructed, it digs up a file .k5remotestorage which should list the Kerberos Principal Name on a line on its own.
+
+In future versions, I expect this to move into LDAP, to permit centrally managed systems to facilitate remoteStorage.  Again, this is with virtual hosting of remoteStorage in mind.
+
+
+## Filesystem
+
+The future idea we’re having is that we could have a (remote) filesystem hosted as OpenAFS, store remoteStorage on it (using Kerberos’ Constrained Delegation to access it as the authenticated user) and permit the user to mount that filesystem on their working places as well.  We imagine other hosted / mounted combinations, such as MSRP-based file transfers, either within a phone call or pushed to a user’s inbox for documents.  This is why I decided to drop the user accounts from rs-serve.
+
+
+## Static web content
+
+I included a facility to present static web content, by adding a default callback to libevhtp.  I used it for the demo setup without zooming in on CORS yet, but it should be generally useful to be able to present an index.html or so.
+

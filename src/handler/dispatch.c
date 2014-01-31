@@ -19,6 +19,7 @@ static void add_cors_headers(evhtp_request_t *req) {
   ADD_RESP_HEADER(req, "Access-Control-Expose-Headers", RS_EXPOSE_HEADERS);
 }
 
+#if 0
 static void verify_user(evhtp_request_t *req) {
   char *username = REQUEST_GET_USER(req);
   uid_t uid = user_get_uid(username);
@@ -33,27 +34,32 @@ static void verify_user(evhtp_request_t *req) {
     log_debug("User found: %s (uid: %ld)", username, uid);
   }
 }
+#endif
 
 void dispatch_storage(evhtp_request_t *req, void *arg) {
   req->status = 0;
 
   do {
+    gss_buffer_desc username = GSS_C_EMPTY_BUFFER;
 
+    // TODO: It remains to be seen if CORS works with Kerberos authentication
     add_cors_headers(req);
 
+#if 0
     // validate user
     verify_user(req);
 
     if(req->status) break; // bail
+#endif
 
     // authorize request
     if(req->method != htp_method_OPTIONS) {
-      int auth_result = authorize_request(req);
+      int auth_result = authorize_request(req, &username);
       if(auth_result == 0) {
-        log_debug("Request authorized.");
+        log_info("Requester authenticated as %.*s.", username.length, username.value);
       } else if(auth_result == -1) {
         log_info("Request NOT authorized.");
-        //OK/Negotiate// req->status = EVHTP_RES_UNAUTH;
+        req->status = EVHTP_RES_UNAUTH;
       } else if(auth_result == -2) {
         log_error("An error occured while authorizing request.");    
         req->status = EVHTP_RES_SERVERR; 
@@ -69,19 +75,28 @@ void dispatch_storage(evhtp_request_t *req, void *arg) {
         req->status = EVHTP_RES_NOCONTENT;
         break;
       case htp_method_GET:
-        req->status = storage_handle_get(req);
+        req->status = storage_handle_get(req, &username);
         break;
       case htp_method_HEAD:
-        req->status = storage_handle_head(req);
+        req->status = storage_handle_head(req, &username);
         break;
       case htp_method_PUT:
-        req->status = storage_handle_put(req);
+        req->status = storage_handle_put(req, &username);
         break;
       case htp_method_DELETE:
-        req->status = storage_handle_delete(req);
+        req->status = storage_handle_delete(req, &username);
         break;
       default:
         req->status = EVHTP_RES_METHNALLOWED;
+      }
+    }
+
+    // Cleanup username
+    if (username.value != NULL) {
+      OM_uint32 major, minor;
+      major = gss_release_buffer (&minor, &username);
+      if (major != GSS_S_COMPLETE) {
+	log_error("GSSAPI cleanup of username buffer returns error code %d and minor %d.", major, minor);
       }
     }
 
